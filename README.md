@@ -1,165 +1,532 @@
-# alian_structure-contracts
+# ⭐ Alian Structure Smart Contracts
 
-A comprehensive smart contract repository for the Alian Structure ecosystem, providing reusable and audited contract templates and utilities.
+> **Open-source Soroban smart contracts powering transparent, secure and verifiable humanitarian aid distribution on the Stellar blockchain.**
 
-## Overview
-
-**alian_structure-contracts** is a centralized repository for managing smart contracts used throughout the Alian Structure platform. This repository contains well-documented, tested, and production-ready contracts designed to facilitate secure and efficient blockchain interactions.
-
-## Table of Contents
-
-- [Features](#features)
-- [Getting Started](#getting-started)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Development](#development)
-- [Testing](#testing)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support](#support)
-
-## Features
-
-- 📋 **Modular Contract Design** - Reusable and composable smart contracts
-- 🔐 **Security First** - Audited contracts with best practices implementation
-- 📚 **Well Documented** - Comprehensive documentation and inline comments
-- ✅ **Thoroughly Tested** - Extensive test coverage and integration tests
-- 🚀 **Production Ready** - Deployment scripts and configuration management
-- 🔄 **Version Control** - Semantic versioning and changelog tracking
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js >= 14.0.0
-- npm or yarn package manager
-- Git
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/SourceXXL/alian_structure-contracts.git
-cd alian_structure-contracts
-
-# Install dependencies
-npm install
-
-# Or using yarn
-yarn install
-```
-
-## Project Structure
-
-```
-alian_structure-contracts/
-├── contracts/           # Smart contract source files
-├── test/               # Test files and test utilities
-├── scripts/            # Deployment and utility scripts
-├── config/             # Configuration files
-├── docs/               # Documentation
-├── .github/            # GitHub workflows and templates
-├── package.json        # Project dependencies and scripts
-├── README.md           # This file
-└── .gitignore          # Git ignore rules
-```
-
-## Usage
-
-### Building Contracts
-
-```bash
-npm run build
-```
-
-### Running Tests
-
-```bash
-npm run test
-```
-
-### Deploying to Network
-
-```bash
-npm run deploy:mainnet
-npm run deploy:testnet
-```
-
-## Development
-
-### Setting Up Development Environment
-
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Configure environment variables in `.env` file
-4. Create a new branch for your feature: `git checkout -b feature/your-feature-name`
-
-### Code Standards
-
-- Follow the existing code style and conventions
-- Write clear, descriptive commit messages
-- Add tests for new functionality
-- Update documentation as needed
-
-## Testing
-
-```bash
-# Run all tests
-npm run test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run specific test file
-npm run test -- test/specific-test.js
-```
-
-## Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Guidelines
-
-- Ensure all tests pass
-- Add tests for new functionality
-- Update documentation
-- Follow code style guidelines
-- Sign your commits when possible
-
-## License
-
-This project is licensed under a specific license - see the LICENSE file for details.
-
-## Support
-
-For support and questions:
-
-- 📧 **Email**: support@sourcexl.com
-- 🐛 **Issues**: [GitHub Issues](https://github.com/SourceXXL/alian_structure-contracts/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/SourceXXL/alian_structure-contracts/discussions)
-- 📖 **Documentation**: [Full Docs](https://github.com/SourceXXL/alian_structure-contracts/wiki)
-
-## Roadmap
-
-- [ ] V1.0 Release - Core contracts and utilities
-- [ ] Enhanced documentation with examples
-- [ ] Community contracts library
-- [ ] Integration with additional blockchain networks
-- [ ] Advanced security audit and certification
-
-## Changelog
-
-See [CHANGELOG.md](./CHANGELOG.md) for a list of changes in each release.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Rust](https://img.shields.io/badge/Rust-1.80+-orange.svg)
+![Soroban](https://img.shields.io/badge/Soroban-Latest-blue.svg)
+![Stellar](https://img.shields.io/badge/Stellar-Blockchain-blue.svg)
+![Status](https://img.shields.io/badge/status-active%20development-brightgreen.svg)
 
 ---
 
-**Made with ❤️ by the SourceXXL Team**
+# Table of Contents
 
-For more information, visit [SourceXXL Organization](https://github.com/SourceXXL)
+- Overview
+- Why Smart Contracts
+- Core Features
+- Architecture
+- Contract Modules
+- Technology Stack
+- Project Structure
+- Development Setup
+- Build
+- Testing
+- Deployment
+- Security
+- Upgrade Strategy
+- Contract Interfaces
+- Events
+- Storage Layout
+- Contribution Guide
+- License
+
+---
+
+# Overview
+
+The **Alian Structure Contracts** repository contains every on-chain component responsible for securely executing humanitarian aid transactions on the Stellar blockchain using **Soroban**.
+
+These contracts serve as the trust layer of the platform.
+
+Instead of relying on centralized intermediaries, every payment, verification, referral reward, and settlement is executed transparently on-chain.
+
+The contracts are designed to be:
+
+- Secure
+- Auditable
+- Upgradeable
+- Gas Efficient
+- Modular
+- Production Ready
+
+---
+
+# Why Smart Contracts?
+
+Traditional donation systems rely heavily on centralized infrastructure.
+
+Alian Structure replaces this model by executing critical operations directly on-chain.
+
+The contracts provide:
+
+- Transparent aid settlements
+- Immutable transaction records
+- Referral commission distribution
+- Treasury management
+- Multi-signature administration
+- Emergency controls
+- Upgrade governance
+
+Every important financial action becomes publicly verifiable.
+
+---
+
+# Core Features
+
+## Direct Aid Settlement
+
+Transfers donor funds directly to verified recipients.
+
+Features
+
+- Atomic transfers
+- Escrow support
+- Expiration handling
+- Claim verification
+- Replay protection
+
+---
+
+## Claim Links
+
+Generate secure claim identifiers.
+
+Supports
+
+- One-time claims
+- Expiration dates
+- Maximum claims
+- Signature validation
+- Hash verification
+
+---
+
+## Referral Rewards
+
+Automatically distributes affiliate commissions.
+
+Supports
+
+- Multi-tier referrals
+- Percentage configuration
+- Reward limits
+- Treasury payouts
+
+---
+
+## Treasury
+
+Central treasury responsible for:
+
+- Holding protocol reserves
+- Reward distribution
+- Administrative transfers
+- Emergency withdrawals
+
+---
+
+## Governance
+
+Administrative controls include
+
+- Contract upgrades
+- Parameter updates
+- Treasury permissions
+- Emergency pause
+- Role assignments
+
+---
+
+## Identity Verification
+
+Stores verification references without exposing private user information.
+
+Supports
+
+- Hash verification
+- Metadata pointers
+- AI verification references
+- Off-chain oracle integration
+
+---
+
+# Smart Contract Architecture
+
+```
+
+┌────────────────────────────┐
+│        Frontend            │
+└────────────┬───────────────┘
+│
+▼
+┌────────────────────────────┐
+│       Backend API          │
+└────────────┬───────────────┘
+│
+▼
+┌────────────────────────────┐
+│      Soroban Contracts     │
+├────────────────────────────┤
+│ Aid Contract               │
+│ Treasury Contract          │
+│ Referral Contract          │
+│ Governance Contract        │
+│ Oracle Contract            │
+│ Registry Contract          │
+└────────────┬───────────────┘
+│
+▼
+Stellar Ledger
+
+```
+
+---
+
+# Contract Modules
+
+## aid-contract
+
+Responsible for
+
+- Aid creation
+- Aid claiming
+- Settlement
+- Escrow
+- Refunds
+
+---
+
+## treasury-contract
+
+Responsible for
+
+- Treasury balances
+- Reward distribution
+- Protocol funds
+- Emergency reserve
+
+---
+
+## referral-contract
+
+Responsible for
+
+- Referral registration
+- Commission calculations
+- Tier rewards
+- Reward claims
+
+---
+
+## governance-contract
+
+Responsible for
+
+- Upgrade authorization
+- Admin roles
+- Parameter management
+- Contract registry
+
+---
+
+## oracle-contract
+
+Responsible for
+
+- AI verification references
+- External signatures
+- Verification proofs
+
+---
+
+## registry-contract
+
+Responsible for
+
+- Contract discovery
+- Address registry
+- Version tracking
+
+---
+
+# Technology Stack
+
+| Technology | Purpose |
+|------------|---------|
+| Rust | Smart contract language |
+| Soroban SDK | Contract development |
+| Stellar CLI | Deployment |
+| Cargo | Package manager |
+| Soroban RPC | Network interaction |
+| GitHub Actions | CI/CD |
+
+---
+
+# Project Structure
+
+```
+
+contracts/
+
+├── aid-contract/
+├── treasury-contract/
+├── referral-contract/
+├── governance-contract/
+├── oracle-contract/
+├── registry-contract/
+│
+├── shared/
+│ ├── errors.rs
+│ ├── events.rs
+│ ├── storage.rs
+│ ├── auth.rs
+│ ├── math.rs
+│ └── utils.rs
+│
+├── scripts/
+│ ├── deploy.sh
+│ ├── upgrade.sh
+│ ├── initialize.sh
+│ └── verify.sh
+│
+├── tests/
+├── Cargo.toml
+├── Cargo.lock
+└── README.md
+
+```
+
+---
+
+# Development Setup
+
+## Install Rust
+
+```
+rustup update
+```
+
+Install Soroban CLI
+
+```
+cargo install --locked soroban-cli
+```
+
+Clone repository
+
+```
+git clone https://github.com/SourceXXL/alian_structure-contracts.git
+
+cd alian_structure-contracts
+```
+
+---
+
+# Build
+
+```
+cargo build --release
+```
+
+Build optimized WASM
+
+```
+cargo build \
+--target wasm32v1-none \
+--release
+```
+
+---
+
+# Testing
+
+Run all tests
+
+```
+cargo test
+```
+
+Run integration tests
+
+```
+cargo test --test integration
+```
+
+Generate coverage
+
+```
+cargo llvm-cov
+```
+
+---
+
+# Deployment
+
+Deploy to Testnet
+
+```
+soroban contract deploy \
+--wasm target/wasm32v1-none/release/aid_contract.wasm \
+--source admin
+```
+
+Initialize
+
+```
+soroban contract invoke \
+--id CONTRACT_ID \
+-- initialize
+```
+
+---
+
+# Security
+
+The contracts implement
+
+- Reentrancy protection
+- Signature verification
+- Overflow-safe arithmetic
+- Access control
+- Replay protection
+- Input validation
+- Treasury limits
+- Emergency pause
+- Time-based expirations
+- Storage validation
+
+---
+
+# Upgrade Strategy
+
+Supports controlled upgrades through governance.
+
+Only authorized administrators may:
+
+- Upgrade contracts
+- Register new implementations
+- Pause protocol
+- Resume protocol
+- Update treasury
+- Modify protocol parameters
+
+---
+
+# Storage Layout
+
+Persistent storage includes
+
+Aid Records
+
+- Aid ID
+- Donor
+- Recipient
+- Amount
+- Status
+- Timestamp
+
+Referral Records
+
+- Wallet
+- Referrer
+- Commission
+- Tier
+
+Treasury
+
+- Balance
+- Rewards
+- Fees
+
+Governance
+
+- Admins
+- Roles
+- Versions
+- Registry
+
+---
+
+# Events
+
+Contracts emit events for:
+
+AidCreated
+
+AidClaimed
+
+AidSettled
+
+AidRefunded
+
+CommissionPaid
+
+TreasuryDeposit
+
+TreasuryWithdrawal
+
+ContractPaused
+
+ContractResumed
+
+ContractUpgraded
+
+---
+
+# Future Roadmap
+
+- Cross-chain settlement
+- Stellar Asset support
+- Multi-token donations
+- DAO governance
+- Zero Knowledge verification
+- On-chain reputation
+- Human identity proofs
+- Streaming donations
+- Batch settlements
+
+---
+
+# Contributing
+
+We welcome contributions from Rust and Soroban developers.
+
+Workflow
+
+1. Fork repository
+
+2. Create feature branch
+
+3. Write tests
+
+4. Submit Pull Request
+
+Every contract contribution must include:
+
+- Unit tests
+
+- Documentation
+
+- Security considerations
+
+- Gas optimization review
+
+---
+
+# License
+
+Licensed under the MIT License.
+
+See LICENSE for details.
+
+---
+
+# Built With
+
+- Stellar
+- Soroban
+- Rust
+- Open Source Community
+
+Building transparent humanitarian infrastructure for everyone.
