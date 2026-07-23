@@ -85,6 +85,7 @@ impl TreasuryContract {
 #[cfg(test)]
 mod test {
     use super::*;
+    use soroban_sdk::testutils::Events;
 
     #[contract]
     struct MockTokenContract;
@@ -214,6 +215,9 @@ mod test {
         assert_eq!(treasury.balance(&symbol_short!("Fees")), 0);
         assert_eq!(treasury.total_balance(), 75);
         assert_eq!(token.balance(&treasury_id), 75);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 2);
     }
 
     #[test]
