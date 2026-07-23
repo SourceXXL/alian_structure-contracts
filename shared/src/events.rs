@@ -13,10 +13,6 @@ pub const CONTRACT_RESUMED: Symbol = symbol_short!("resumed");
 pub const CONTRACT_UPGRADED: Symbol = symbol_short!("upgraded");
 
 /// Emit an event with a single data value.
-pub fn emit<T: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val>>(
-    env: &Env,
-    topic: Symbol,
-    data: T,
-) {
+pub fn emit<T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, topic: Symbol, data: T) {
     env.events().publish((topic,), data);
 }
