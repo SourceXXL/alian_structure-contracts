@@ -27,6 +27,10 @@ impl TreasuryContract {
             return Err(Error::InvalidArgument);
         }
 
+        if category != CATEGORY_RESERVE && category != CATEGORY_REWARDS && category != CATEGORY_FEES {
+            return Err(Error::InvalidArgument);
+        }
+
         let token: Address = env.storage().instance().get(&KEY_TOKEN).unwrap();
         let treasury = env.current_contract_address();
 
