@@ -9,8 +9,8 @@ pub enum Error {
     Unauthorized = 1,
     /// The requested item was not found in storage.
     NotFound = 2,
-    /// The supplied argument is invalid.
-    InvalidArgument = 3,
+    /// The supplied monetary amount is invalid.
+    InvalidAmount = 3,
     /// An arithmetic operation would overflow.
     Overflow = 4,
     /// The operation is not permitted while the contract is paused.
