@@ -6,3 +6,5 @@ pub mod events;
 pub mod math;
 pub mod storage;
 pub mod utils;
+
+pub use errors::Error;
