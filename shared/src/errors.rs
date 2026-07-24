@@ -21,4 +21,6 @@ pub enum Error {
     AlreadyClaimed = 7,
     /// Insufficient treasury balance.
     InsufficientBalance = 8,
+    /// The operation requires the contract to be paused.
+    NotPaused = 9,
 }
