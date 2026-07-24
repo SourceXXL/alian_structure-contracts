@@ -21,4 +21,7 @@ pub enum Error {
     AlreadyClaimed = 7,
     /// Insufficient treasury balance.
     InsufficientBalance = 8,
+    /// Requested withdrawal exceeds the configured per-transaction limit.
+    /// NEW: added for the treasury withdrawal feature.
+    WithdrawalLimitExceeded = 9,
 }
