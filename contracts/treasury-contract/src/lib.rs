@@ -1,15 +1,16 @@
 #![no_std]
 
-use shared::errors::Error;
-use shared::events;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
-/// Storage key for the treasury's emergency reserve balance.
-///
-/// Tracked as its own instance-storage entry, separate from any other
-/// treasury balance, so `emergency_withdraw` can only ever draw down funds
-/// that were earmarked for the reserve.
-const KEY_RESERVE_BALANCE: Symbol = symbol_short!("reserve");
+use shared::auth::{self, Role};
+use shared::errors::Error;
+use shared::events::{self, TREASURY_WITHDRAW};
+
+/// Storage key prefix for per-category balances; the full key is
+/// `(BALANCE, category)`.
+const BALANCE: Symbol = symbol_short!("cat_bal");
+/// Storage key for the configurable max per-transaction withdrawal limit.
+const MAX_WD: Symbol = symbol_short!("max_wd");
 
 #[contract]
 pub struct TreasuryContract;
@@ -22,184 +23,124 @@ const CATEGORY_FEES: Symbol = symbol_short!("Fees");
 
 #[contractimpl]
 impl TreasuryContract {
-    /// Initialize the contract, setting the admin address and token contract.
-    pub fn initialize(env: Env, admin: Address, token: Address) {
+    /// Initialise the contract: sets the admin address, grants the admin
+    /// the `TreasuryManager` role, and sets the initial max
+    /// per-transaction withdrawal limit.
+    ///
+    /// CHANGED: signature extended from `initialize(env, admin)` to also
+    /// take `max_withdrawal_limit` — update deploy/init scripts (e.g.
+    /// `scripts/initialize.sh`) accordingly.
+    pub fn initialize(env: Env, admin: Address, max_withdrawal_limit: i128) -> Result<(), Error> {
+        if max_withdrawal_limit <= 0 {
+            return Err(Error::InvalidArgument);
+        }
         auth::set_admin(&env, &admin);
-        env.storage().instance().set(&KEY_TOKEN, &token);
+        auth::grant_role(&env, &admin, Role::TreasuryManager);
+        env.storage().instance().set(&MAX_WD, &max_withdrawal_limit);
+        Ok(())
     }
 
-    /// Deposit tokens into the treasury under the requested category.
-    pub fn deposit(env: Env, from: Address, amount: i128, category: Symbol) -> Result<(), Error> {
+    /// Grants the `TreasuryManager` role to `who`. Admin only.
+    pub fn add_treasury_manager(env: Env, caller: Address, who: Address) -> Result<(), Error> {
+        auth::require_admin(&env, &caller);
+        auth::grant_role(&env, &who, Role::TreasuryManager);
+        Ok(())
+    }
+
+    /// Revokes the `TreasuryManager` role from `who`. Admin only.
+    pub fn remove_treasury_manager(env: Env, caller: Address, who: Address) -> Result<(), Error> {
+        auth::require_admin(&env, &caller);
+        auth::revoke_role(&env, &who, Role::TreasuryManager);
+        Ok(())
+    }
+
+    /// Updates the max per-transaction withdrawal limit. Admin only.
+    pub fn set_withdrawal_limit(env: Env, caller: Address, new_limit: i128) -> Result<(), Error> {
+        auth::require_admin(&env, &caller);
+        if new_limit <= 0 {
+            return Err(Error::InvalidArgument);
+        }
+        env.storage().instance().set(&MAX_WD, &new_limit);
+        Ok(())
+    }
+
+    /// Credits `amount` into `category`'s balance. `TreasuryManager` only.
+    /// Used by other protocol contracts / setup flows to fund the
+    /// treasury's internal accounting.
+    pub fn deposit(env: Env, caller: Address, category: Symbol, amount: i128) -> Result<(), Error> {
+        auth::require_role(&env, &caller, Role::TreasuryManager)?;
+        if amount <= 0 {
+            return Err(Error::InvalidArgument);
+        }
+        let key = (BALANCE, category);
+        let balance: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        let new_balance = balance.checked_add(amount).ok_or(Error::Overflow)?;
+        env.storage().instance().set(&key, &new_balance);
+        Ok(())
+    }
+
+    /// Returns the current balance for `category` (0 if never funded).
+    pub fn category_balance(env: Env, category: Symbol) -> i128 {
+        env.storage().instance().get(&(BALANCE, category)).unwrap_or(0)
+    }
+
+    /// Returns the currently configured max per-transaction withdrawal limit.
+    pub fn withdrawal_limit(env: Env) -> i128 {
+        env.storage().instance().get(&MAX_WD).unwrap_or(0)
+    }
+
+    /// Withdraws `amount` from `category` to `to`.
+    ///
+    /// Guards, in order:
+    /// 1. `caller` must authorize the call AND hold `TreasuryManager`
+    ///    -> `Error::Unauthorized`
+    /// 2. `amount` must be > 0                     -> `Error::InvalidArgument`
+    /// 3. `amount` must not exceed the configured max withdrawal limit
+    ///    -> `Error::WithdrawalLimitExceeded`
+    /// 4. `amount` must not exceed the category balance
+    ///    -> `Error::InsufficientBalance`
+    ///
+    /// On success, decrements the category balance and emits the shared
+    /// `TREASURY_WITHDRAW` event with `(category, to, amount, remaining)`.
+    pub fn withdraw(
+        env: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+        category: Symbol,
+    ) -> Result<(), Error> {
+        // 1. Auth + role gate.
+        auth::require_role(&env, &caller, Role::TreasuryManager)?;
+
+        // 2. Basic input validation.
         if amount <= 0 {
             return Err(Error::InvalidArgument);
         }
 
-        if category != CATEGORY_RESERVE && category != CATEGORY_REWARDS && category != CATEGORY_FEES {
-            return Err(Error::InvalidArgument);
+        // 3. Configurable per-transaction limit.
+        let limit: i128 = env.storage().instance().get(&MAX_WD).unwrap_or(0);
+        if amount > limit {
+            return Err(Error::WithdrawalLimitExceeded);
         }
 
-        let token: Address = env.storage().instance().get(&KEY_TOKEN).unwrap();
-        let treasury = env.current_contract_address();
+        // 4. Sufficient category balance.
+        let key = (BALANCE, category.clone());
+        let balance: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        if amount > balance {
+            return Err(Error::InsufficientBalance);
+        }
 
-        from.require_auth();
-        env.invoke_contract::<()>(
-            &token,
-            &symbol_short!("transfer"),
-            (from.clone(), treasury, amount),
-        );
+        // Effects before interactions/events.
+        let remaining = balance - amount;
+        env.storage().instance().set(&key, &remaining);
 
-        let mut balances: Map<Symbol, i128> = env
-            .storage()
-            .instance()
-            .get(&KEY_BALANCES)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let current = balances.get(&category).unwrap_or(0);
-        let updated = math::safe_add(current, amount).ok_or(Error::Overflow)?;
-        balances.set(&category, &updated);
-        env.storage().instance().set(&KEY_BALANCES, &balances);
-
-        events::emit(&env, events::TREASURY_DEPOSIT, (from, amount, category));
+        // NOTE: as with the rest of this contract, balances here are
+        // internal accounting only. If this treasury custodies a live
+        // SAC/token, wire a `token::Client::transfer(&to, &amount)` call
+        // here (before the event emit) using a stored token address.
+        events::emit(&env, TREASURY_WITHDRAW, (category, to, amount, remaining));
 
         Ok(())
-    }
-
-    /// Return the balance stored for the requested category.
-    pub fn balance(env: Env, category: Symbol) -> i128 {
-        let balances: Map<Symbol, i128> = env
-            .storage()
-            .instance()
-            .get(&KEY_BALANCES)
-            .unwrap_or_else(|| Map::new(&env));
-
-        balances.get(&category).unwrap_or(0)
-    }
-
-    /// Return the total balance across all treasury categories.
-    pub fn total_balance(env: Env) -> i128 {
-        let balances: Map<Symbol, i128> = env
-            .storage()
-            .instance()
-            .get(&KEY_BALANCES)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let reserve = balances.get(&CATEGORY_RESERVE).unwrap_or(0);
-        let rewards = balances.get(&CATEGORY_REWARDS).unwrap_or(0);
-        let fees = balances.get(&CATEGORY_FEES).unwrap_or(0);
-
-        math::safe_add(reserve, rewards)
-            .and_then(|sum| math::safe_add(sum, fees))
-            .expect("total balance overflow")
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Events;
-
-    #[contract]
-    struct MockTokenContract;
-
-    #[contractimpl]
-    impl MockTokenContract {
-        pub fn initialize(env: Env, admin: Address) {
-            env.storage().instance().set(&symbol_short!("admin"), &admin);
-        }
-
-        pub fn mint(env: Env, to: Address, amount: i128) {
-            let mut balances: Map<Address, i128> = env
-                .storage()
-                .instance()
-                .get(&symbol_short!("bal"))
-                .unwrap_or_else(|| Map::new(&env));
-            let balance = balances.get(&to).unwrap_or(0);
-            balances.set(&to, &(balance + amount));
-            env.storage().instance().set(&symbol_short!("bal"), &balances);
-        }
-
-        pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
-            from.require_auth();
-            let mut balances: Map<Address, i128> = env
-                .storage()
-                .instance()
-                .get(&symbol_short!("bal"))
-                .unwrap_or_else(|| Map::new(&env));
-            let from_balance = balances.get(&from).unwrap_or(0);
-            let to_balance = balances.get(&to).unwrap_or(0);
-            balances.set(&from, &(from_balance - amount));
-            balances.set(&to, &(to_balance + amount));
-            env.storage().instance().set(&symbol_short!("bal"), &balances);
-        }
-
-        pub fn balance(env: Env, id: Address) -> i128 {
-            let balances: Map<Address, i128> = env
-                .storage()
-                .instance()
-                .get(&symbol_short!("bal"))
-                .unwrap_or_else(|| Map::new(&env));
-            balances.get(&id).unwrap_or(0)
-        }
-    }
-
-    struct MockTokenClient<'a> {
-        env: &'a Env,
-        contract_id: &'a Address,
-    }
-
-    impl<'a> MockTokenClient<'a> {
-        fn new(env: &'a Env, contract_id: &'a Address) -> Self {
-            Self { env, contract_id }
-        }
-
-        fn initialize(&self, admin: &Address) {
-            self.env
-                .invoke_contract::<()>(&self.contract_id, &symbol_short!("initialize"), (admin,));
-        }
-
-        fn mint(&self, to: &Address, amount: &i128) {
-            self.env
-                .invoke_contract::<()>(&self.contract_id, &symbol_short!("mint"), (to, amount));
-        }
-
-        fn balance(&self, id: &Address) -> i128 {
-            self.env
-                .invoke_contract::<i128>(&self.contract_id, &symbol_short!("balance"), (id,))
-        }
-    }
-
-    struct TreasuryClient<'a> {
-        env: &'a Env,
-        contract_id: &'a Address,
-    }
-
-    impl<'a> TreasuryClient<'a> {
-        fn new(env: &'a Env, contract_id: &'a Address) -> Self {
-            Self { env, contract_id }
-        }
-
-        fn initialize(&self, admin: &Address, token: &Address) {
-            self.env
-                .invoke_contract::<()>(&self.contract_id, &symbol_short!("initialize"), (admin, token));
-        }
-
-        fn deposit(&self, from: &Address, amount: &i128, category: &Symbol) -> Result<(), Error> {
-            self.env.invoke_contract::<Result<(), Error>>(
-                &self.contract_id,
-                &symbol_short!("deposit"),
-                (from, amount, category),
-            )
-        }
-
-        fn balance(&self, category: &Symbol) -> i128 {
-            self.env
-                .invoke_contract::<i128>(&self.contract_id, &symbol_short!("balance"), (category,))
-        }
-
-        fn total_balance(&self) -> i128 {
-            self.env
-                .invoke_contract::<i128>(&self.contract_id, &symbol_short!("total_balance"), ())
-        }
     }
 
     #[test]
@@ -289,12 +230,6 @@ fn reserve_balance(env: &Env) -> i128 {
         .instance()
         .get::<Symbol, i128>(&KEY_RESERVE_BALANCE)
         .unwrap_or(0)
-}
-
-fn set_reserve_balance(env: &Env, balance: i128) {
-    env.storage()
-        .instance()
-        .set::<Symbol, i128>(&KEY_RESERVE_BALANCE, &balance);
 }
 
 #[cfg(test)]

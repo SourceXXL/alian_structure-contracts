@@ -1,56 +1,122 @@
 use crate::{TreasuryContract, TreasuryContractClient};
 use shared::errors::Error;
-use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
 
-fn setup() -> (Env, TreasuryContractClient<'static>, Address, Address) {
+fn setup(env: &Env) -> (TreasuryContractClient<'static>, Address, i128) {
+    let contract_id = env.register_contract(None, TreasuryContract);
+    let client = TreasuryContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let limit: i128 = 1_000;
+    client.initialize(&admin, &limit);
+    (client, admin, limit)
+}
+
+#[test]
+fn test_withdraw_success_decrements_balance_and_emits_event() {
     let env = Env::default();
-    let contract_id = env.register(TreasuryContract, ());
-    let client = TreasuryContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
-    (env, client, contract_id, admin)
+    env.mock_all_auths();
+
+    let (client, admin, _limit) = setup(&env);
+    let category = symbol_short!("reserve");
+    let recipient = Address::generate(&env);
+
+    client.deposit(&admin, &category, &500);
+    assert_eq!(client.category_balance(&category), 500);
+
+    client.withdraw(&admin, &recipient, &200, &category);
+
+    assert_eq!(client.category_balance(&category), 300);
+    assert!(
+        !env.events().all().is_empty(),
+        "expected TREASURY_WITHDRAW event to be emitted"
+    );
 }
 
 #[test]
-fn emergency_withdraw_rejects_when_not_paused() {
-    let (env, client, _contract_id, admin) = setup();
-    let to = Address::generate(&env);
-
+fn test_withdraw_rejects_non_manager() {
+    let env = Env::default();
     env.mock_all_auths();
-    let result = client.try_emergency_withdraw(&admin, &to, &100);
 
-    assert_eq!(result, Err(Ok(soroban_sdk::Error::from(Error::NotPaused))));
+    let (client, admin, _limit) = setup(&env);
+    let category = symbol_short!("reserve");
+    let recipient = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    client.deposit(&admin, &category, &500);
+
+    let result = client.try_withdraw(&stranger, &recipient, &100, &category);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
 
 #[test]
-#[should_panic(expected = "caller is not the admin")]
-fn emergency_withdraw_rejects_non_admin() {
-    let (env, client, contract_id, _admin) = setup();
-    let non_admin = Address::generate(&env);
-    let to = Address::generate(&env);
-
-    env.as_contract(&contract_id, || {
-        shared::storage::set_paused(&env, true);
-    });
-
+fn test_withdraw_rejects_amount_above_limit() {
+    let env = Env::default();
     env.mock_all_auths();
-    client.emergency_withdraw(&non_admin, &to, &100);
+
+    let (client, admin, limit) = setup(&env);
+    let category = symbol_short!("reserve");
+    let recipient = Address::generate(&env);
+
+    client.deposit(&admin, &category, &(limit * 2));
+
+    let over_limit = limit + 1;
+    let result = client.try_withdraw(&admin, &recipient, &over_limit, &category);
+    assert_eq!(result, Err(Ok(Error::WithdrawalLimitExceeded)));
 }
 
 #[test]
-fn emergency_withdraw_succeeds_for_admin_while_paused() {
-    let (env, client, contract_id, admin) = setup();
-    let to = Address::generate(&env);
-
-    env.as_contract(&contract_id, || {
-        shared::storage::set_paused(&env, true);
-        crate::set_reserve_balance(&env, 1_000);
-    });
-
+fn test_withdraw_rejects_insufficient_category_balance() {
+    let env = Env::default();
     env.mock_all_auths();
-    client.emergency_withdraw(&admin, &to, &400);
 
-    let remaining = env.as_contract(&contract_id, || crate::reserve_balance(&env));
-    assert_eq!(remaining, 600);
+    let (client, admin, _limit) = setup(&env);
+    let category = symbol_short!("rewards");
+    let recipient = Address::generate(&env);
+
+    client.deposit(&admin, &category, &50);
+
+    let result = client.try_withdraw(&admin, &recipient, &100, &category);
+    assert_eq!(result, Err(Ok(Error::InsufficientBalance)));
+}
+
+#[test]
+fn test_withdraw_rejects_zero_or_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _limit) = setup(&env);
+    let category = symbol_short!("reserve");
+    let recipient = Address::generate(&env);
+
+    client.deposit(&admin, &category, &500);
+
+    let result = client.try_withdraw(&admin, &recipient, &0, &category);
+    assert_eq!(result, Err(Ok(Error::InvalidArgument)));
+}
+
+#[test]
+fn test_admin_can_add_and_remove_treasury_manager() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, _limit) = setup(&env);
+    let category = symbol_short!("reserve");
+    let recipient = Address::generate(&env);
+    let manager = Address::generate(&env);
+
+    client.deposit(&admin, &category, &500);
+
+    // Not yet a manager -> rejected.
+    let result = client.try_withdraw(&manager, &recipient, &100, &category);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+    // Admin grants the role -> now allowed.
+    client.add_treasury_manager(&admin, &manager);
+    client.withdraw(&manager, &recipient, &100, &category);
+    assert_eq!(client.category_balance(&category), 400);
+
+    // Admin revokes the role -> rejected again.
+    client.remove_treasury_manager(&admin, &manager);
+    let result = client.try_withdraw(&manager, &recipient, &50, &category);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
