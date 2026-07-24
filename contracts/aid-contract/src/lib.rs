@@ -48,6 +48,22 @@ pub struct AidRecord {
 #[contract]
 pub struct AidContract;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct AidClaimMetadata {
+    pub claim_hash: Option<BytesN<32>>,
+    pub max_claims: u32,
+    pub claims_used: u32,
+    pub expires_at: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+enum DataKey {
+    Aid(u64),
+    ClaimNonce(u64, BytesN<32>),
+}
+
 #[contractimpl]
 impl AidContract {
     /// Initialise the contract, setting the admin address and token address.
