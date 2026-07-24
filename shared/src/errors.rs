@@ -1,6 +1,9 @@
 use soroban_sdk::contracterror;
 
-/// Shared error codes used across all contracts.
+/// Stable error codes shared by every contract in the workspace.
+///
+/// Codes from 900 to 999 are reserved for errors whose meaning is shared
+/// consistently across multiple contract modules.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -9,8 +12,8 @@ pub enum Error {
     Unauthorized = 1,
     /// The requested item was not found in storage.
     NotFound = 2,
-    /// The supplied argument is invalid.
-    InvalidArgument = 3,
+    /// The supplied monetary amount is invalid.
+    InvalidAmount = 3,
     /// An arithmetic operation would overflow.
     Overflow = 4,
     /// The operation is not permitted while the contract is paused.

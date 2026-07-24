@@ -15,6 +15,12 @@ const MAX_WD: Symbol = symbol_short!("max_wd");
 #[contract]
 pub struct TreasuryContract;
 
+const KEY_TOKEN: Symbol = symbol_short!("token");
+const KEY_BALANCES: Symbol = symbol_short!("balances");
+const CATEGORY_RESERVE: Symbol = symbol_short!("Reserve");
+const CATEGORY_REWARDS: Symbol = symbol_short!("Rewards");
+const CATEGORY_FEES: Symbol = symbol_short!("Fees");
+
 #[contractimpl]
 impl TreasuryContract {
     /// Initialise the contract: sets the admin address, grants the admin
@@ -136,6 +142,94 @@ impl TreasuryContract {
 
         Ok(())
     }
+
+    #[test]
+    fn deposit_updates_balances_and_emits_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let alice = Address::generate(&env);
+        let treasury_id = env.register_contract(None, TreasuryContract);
+        let token_id = env.register_contract(None, MockTokenContract);
+        let treasury = TreasuryClient::new(&env, &treasury_id);
+        let token = MockTokenClient::new(&env, &token_id);
+
+        treasury.initialize(&admin, &token_id);
+        token.initialize(&admin);
+        token.mint(&alice, &100);
+
+        assert!(treasury.deposit(&alice, &50, &symbol_short!("Reserve")).is_ok());
+        assert!(treasury.deposit(&alice, &25, &symbol_short!("Rewards")).is_ok());
+
+        assert_eq!(treasury.balance(&symbol_short!("Reserve")), 50);
+        assert_eq!(treasury.balance(&symbol_short!("Rewards")), 25);
+        assert_eq!(treasury.balance(&symbol_short!("Fees")), 0);
+        assert_eq!(treasury.total_balance(), 75);
+        assert_eq!(token.balance(&treasury_id), 75);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn deposit_returns_overflow_for_category_overflow() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let alice = Address::generate(&env);
+        let treasury_id = env.register_contract(None, TreasuryContract);
+        let token_id = env.register_contract(None, MockTokenContract);
+        let treasury = TreasuryClient::new(&env, &treasury_id);
+        let token = MockTokenClient::new(&env, &token_id);
+
+        treasury.initialize(&admin, &token_id);
+        token.initialize(&admin);
+        token.mint(&alice, &100);
+
+        assert!(treasury.deposit(&alice, &i128::MAX, &symbol_short!("Reserve")).is_ok());
+        assert_eq!(
+            treasury.deposit(&alice, &1, &symbol_short!("Reserve")).unwrap_err(),
+            Error::Overflow
+        );
+    }
+
+    /// Withdraw funds from the emergency reserve.
+    ///
+    /// Only callable by the admin, and only while the contract is paused —
+    /// this path exists for admins to move reserve funds to a safe address
+    /// when something has gone wrong, not for routine operations.
+    ///
+    /// # Panics
+    /// - `Error::NotPaused` if the contract is not currently paused.
+    /// - if `caller` is not the admin (see `shared::auth::require_admin`).
+    /// - `Error::InvalidArgument` if `amount` is not strictly positive.
+    /// - `Error::InsufficientBalance` if the reserve holds less than `amount`.
+    pub fn emergency_withdraw(env: Env, caller: Address, to: Address, amount: i128) {
+        if !shared::storage::is_paused(&env) {
+            env.panic_with_error(Error::NotPaused);
+        }
+        shared::auth::require_admin(&env, &caller);
+
+        if amount <= 0 {
+            env.panic_with_error(Error::InvalidArgument);
+        }
+
+        let balance = reserve_balance(&env);
+        let new_balance = match balance.checked_sub(amount) {
+            Some(b) if b >= 0 => b,
+            _ => env.panic_with_error(Error::InsufficientBalance),
+        };
+        set_reserve_balance(&env, new_balance);
+
+        events::emit(&env, events::TREASURY_EMERGENCY_WITHDRAW, (caller, to, amount));
+    }
+}
+
+fn reserve_balance(env: &Env) -> i128 {
+    env.storage()
+        .instance()
+        .get::<Symbol, i128>(&KEY_RESERVE_BALANCE)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
