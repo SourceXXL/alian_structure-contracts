@@ -7,6 +7,8 @@ use soroban_sdk::contracterror;
 pub enum Error {
     /// Caller is not authorised to perform this action.
     Unauthorized = 1,
+    /// The caller is not authorised for the requested action.
+    NotAuthorized = 9,
     /// The requested item was not found in storage.
     NotFound = 2,
     /// The supplied argument is invalid.
@@ -21,4 +23,6 @@ pub enum Error {
     AlreadyClaimed = 7,
     /// Insufficient treasury balance.
     InsufficientBalance = 8,
+    /// The operation requires the contract to be paused.
+    NotPaused = 9,
 }
