@@ -35,23 +35,28 @@ impl TreasuryContract {
             return Err(Error::InvalidArgument);
         }
         auth::set_admin(&env, &admin);
-        auth::grant_role(&env, &admin, Role::TreasuryManager);
+        // Grant the admin the TreasuryManager role so they can operate the
+        // treasury immediately after initialisation without a separate call.
+        // We write the persistent role entry directly here because require_admin
+        // has just been established in the line above.
+        env.storage()
+            .persistent()
+            .set::<shared::auth::DataKey, bool>(
+                &shared::auth::DataKey::Role(admin.clone(), Role::TreasuryManager),
+                &true,
+            );
         env.storage().instance().set(&MAX_WD, &max_withdrawal_limit);
         Ok(())
     }
 
     /// Grants the `TreasuryManager` role to `who`. Admin only.
     pub fn add_treasury_manager(env: Env, caller: Address, who: Address) -> Result<(), Error> {
-        auth::require_admin(&env, &caller);
-        auth::grant_role(&env, &who, Role::TreasuryManager);
-        Ok(())
+        auth::grant_role(&env, &caller, &who, Role::TreasuryManager)
     }
 
     /// Revokes the `TreasuryManager` role from `who`. Admin only.
     pub fn remove_treasury_manager(env: Env, caller: Address, who: Address) -> Result<(), Error> {
-        auth::require_admin(&env, &caller);
-        auth::revoke_role(&env, &who, Role::TreasuryManager);
-        Ok(())
+        auth::revoke_role(&env, &caller, &who, Role::TreasuryManager)
     }
 
     /// Updates the max per-transaction withdrawal limit. Admin only.

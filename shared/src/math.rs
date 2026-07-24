@@ -2,6 +2,32 @@ use crate::errors::Error;
 
 const BPS_DENOMINATOR: i128 = 10_000;
 
+// ---------------------------------------------------------------------------
+// Infallible (Option-returning) helpers used by the referral contract
+// ---------------------------------------------------------------------------
+
+/// Adds two values, returning `None` on overflow.
+#[inline]
+pub fn safe_add(a: i128, b: i128) -> Option<i128> {
+    a.checked_add(b)
+}
+
+/// Subtracts `b` from `a`, returning `None` on overflow / underflow.
+#[inline]
+pub fn safe_sub(a: i128, b: i128) -> Option<i128> {
+    a.checked_sub(b)
+}
+
+/// Applies a basis-point rate, returning `None` on overflow or invalid inputs.
+///
+/// This is the `Option`-returning counterpart of [`apply_bps`], used by the
+/// referral contract which maps `None` directly to `Error::Overflow`.
+#[inline]
+pub fn bps_of(amount: i128, bps: i128) -> Option<i128> {
+    apply_bps(amount, bps).ok()
+}
+
+
 /// Adds two values, returning [`Error::Overflow`] if the result is out of range.
 pub fn checked_add(a: i128, b: i128) -> Result<i128, Error> {
     a.checked_add(b).ok_or(Error::Overflow)
