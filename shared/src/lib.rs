@@ -6,3 +6,6 @@ pub mod events;
 pub mod math;
 pub mod storage;
 pub mod utils;
+
+#[cfg(test)]
+mod test_auth;
