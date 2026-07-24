@@ -1,9 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, token, Address, Env, Symbol,
+    contract, contractimpl, panic_with_error, token, Address, Env, Symbol,
 };
-use shared::{emit, AID_CREATED, Error, InvalidArgument};
+use shared::{emit, AID_CREATED, Error};
 
 /// Storage keys
 const KEY_TOKEN: Symbol = Symbol::new("token");
