@@ -1,6 +1,7 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env};
+use shared::Error;
+use soroban_sdk::{contract, contractimpl, Address, Env};
 
 #[contract]
 pub struct AidContract;
@@ -24,8 +25,17 @@ enum DataKey {
 #[contractimpl]
 impl AidContract {
     /// Initialise the contract, setting the admin address.
-    pub fn initialize(env: Env, admin: Address) {
+    ///
+    /// Returns `Error::AlreadyInitialized` if an administrator has already
+    /// been stored for this contract instance.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        if env.storage().instance().has(&shared::auth::KEY_ADMIN) {
+            return Err(Error::AlreadyInitialized);
+        }
+
         shared::auth::set_admin(&env, &admin);
+
+        Ok(())
     }
 
     /// Create a new aid with optional claim-link metadata.
