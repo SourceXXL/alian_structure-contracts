@@ -12,6 +12,7 @@ pub const TIER_CONFIG_SET: Symbol = symbol_short!("tier_cfg");
 pub const TREASURY_SET: Symbol = symbol_short!("trs_set");
 pub const TREASURY_DEPOSIT: Symbol = symbol_short!("t_dep");
 pub const TREASURY_WITHDRAW: Symbol = symbol_short!("t_wdw");
+pub const TREASURY_EMERGENCY_WITHDRAW: Symbol = symbol_short!("t_emrg");
 pub const PARAMETER_CHANGED: Symbol = symbol_short!("param_chg");
 pub const CONTRACT_PAUSED: Symbol = symbol_short!("paused");
 pub const CONTRACT_RESUMED: Symbol = symbol_short!("resumed");

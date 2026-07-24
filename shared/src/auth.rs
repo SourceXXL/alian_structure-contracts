@@ -1,6 +1,7 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 use crate::errors::Error;
+use crate::storage::{persistent_has, persistent_remove, persistent_set};
 
 pub const KEY_ADMIN: Symbol = symbol_short!("admin");
 
@@ -80,16 +81,19 @@ pub fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 /// Returns `true` when `user` holds `role`.
+///
+/// Uses [`persistent_get`] so the role entry's TTL is extended on every
+/// successful check, keeping frequently-queried roles alive.
 pub fn has_role(env: &Env, user: &Address, role: Role) -> bool {
-    env.storage()
-        .persistent()
-        .has::<DataKey>(&DataKey::Role(user.clone(), role))
+    persistent_has(env, &DataKey::Role(user.clone(), role))
 }
 
 /// Grants `role` to `user`. Admin-gated — `admin_caller` must be the
 /// current admin with a valid signature.
 ///
 /// Returns `Err(Error::Unauthorized)` when the caller is not the admin.
+/// The role entry is written to persistent storage with an immediate TTL
+/// extension so it survives upcoming ledger closures.
 pub fn grant_role(
     env: &Env,
     admin_caller: &Address,
@@ -97,9 +101,7 @@ pub fn grant_role(
     role: Role,
 ) -> Result<(), Error> {
     require_admin(env, admin_caller)?;
-    env.storage()
-        .persistent()
-        .set::<DataKey, bool>(&DataKey::Role(user.clone(), role), &true);
+    persistent_set(env, &DataKey::Role(user.clone(), role), &true);
     Ok(())
 }
 
@@ -118,9 +120,7 @@ pub fn revoke_role(
     role: Role,
 ) -> Result<(), Error> {
     require_admin(env, admin_caller)?;
-    env.storage()
-        .persistent()
-        .remove::<DataKey>(&DataKey::Role(user.clone(), role));
+    persistent_remove(env, &DataKey::Role(user.clone(), role));
     Ok(())
 }
 

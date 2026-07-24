@@ -1,159 +1,218 @@
 #![no_std]
 
-use soroban_sdk::{
-    contract, contractimpl, panic_with_error, token, Address, Env, Symbol, Map,
-};
-use shared::{emit, AID_CREATED, Error};
+use soroban_sdk::{contract, contractimpl, contracterror, token, Address, Env};
 
-/// Storage keys
-const KEY_TOKEN: Symbol = Symbol::new("token");
-const KEY_AID_COUNTER: Symbol = Symbol::new("aid_cnt");
-const KEY_AIDS: Symbol = Symbol::new("aids");
+use shared::{emit, AID_CLAIMED, AID_CREATED, AID_REFUNDED, AID_SETTLED};
+use shared::storage::{is_paused, set_paused as shared_set_paused};
 
-/// Aid status enum
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub mod storage;
+pub mod types;
+
+use storage::{get_aid, get_aid_counter, has_aid, set_aid, set_aid_counter};
+
+// Re-export so test modules (and `use super::*`) have access.
+pub use types::{AidRecord, AidStatus};
+
+// ---------------------------------------------------------------------------
+// Contract-specific error codes  (range 100-199 per shared/README.md)
+// ---------------------------------------------------------------------------
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum AidStatus {
-    Created = 0,
-    Claimed = 1,
-    Settled = 2,
-    Refunded = 3,
+pub enum AidError {
+    /// Caller is not the authorised recipient.
+    Unauthorized = 100,
+    /// The requested aid record was not found.
+    NotFound = 101,
+    /// The aid has already been settled or refunded.
+    AlreadyClaimed = 102,
+    /// The claim window has expired (past `expiry_ledger`).
+    Expired = 103,
+    /// The contract is paused; no state-changing operations are allowed.
+    Paused = 104,
 }
 
-impl From<u32> for AidStatus {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => AidStatus::Created,
-            1 => AidStatus::Claimed,
-            2 => AidStatus::Settled,
-            3 => AidStatus::Refunded,
-            _ => panic!("invalid aid status"),
-        }
-    }
-}
-
-/// AidRecord structure that stores all aid information
-#[soroban_sdk::contracttype]
-#[derive(Debug, Clone)]
-pub struct AidRecord {
-    pub id: u64,
-    pub donor: Address,
-    pub recipient: Address,
-    pub amount: i128,
-    pub status: u32,
-    pub timestamp: u64,
-    pub expiry: u64,
-}
+// ---------------------------------------------------------------------------
+// Contract
+// ---------------------------------------------------------------------------
 
 #[contract]
 pub struct AidContract;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-pub struct AidClaimMetadata {
-    pub claim_hash: Option<BytesN<32>>,
-    pub max_claims: u32,
-    pub claims_used: u32,
-    pub expires_at: u64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-enum DataKey {
-    Aid(u64),
-    ClaimNonce(u64, BytesN<32>),
-}
-
 #[contractimpl]
 impl AidContract {
-    /// Initialise the contract, setting the admin address and token address.
-    pub fn initialize(env: Env, admin: Address, token: Address) {
+    // -----------------------------------------------------------------------
+    // Lifecycle
+    // -----------------------------------------------------------------------
+
+    /// Initialise the contract, storing the admin address.
+    ///
+    /// Must be called exactly once immediately after deployment.
+    pub fn initialize(env: Env, admin: Address) {
         shared::auth::set_admin(&env, &admin);
-        env.storage().instance().set(&KEY_TOKEN, &token);
-        // Initialize aid counter to 0
-        env.storage().instance().set(&KEY_AID_COUNTER, &0u64);
     }
 
-    /// Create a new aid record, escrowing funds from the donor.
+    // -----------------------------------------------------------------------
+    // Aid creation
+    // -----------------------------------------------------------------------
+
+    /// Create a new aid disbursement and escrow funds from the donor.
+    ///
+    /// Transfers `amount` of `token` from `donor` to this contract for
+    /// safekeeping until the recipient claims or the aid expires.
+    ///
+    /// Returns the newly allocated `aid_id`.
     pub fn create_aid(
         env: Env,
+        aid_id: u64,
         donor: Address,
         recipient: Address,
+        token: Address,
         amount: i128,
-        expiry: u64,
+        expiry_ledger: u32,
     ) -> u64 {
-        // Verify the donor is the caller and has authorized this action
         donor.require_auth();
 
-        // Validate amount > 0
         if amount <= 0 {
-            panic_with_error!(env, Error::InvalidArgument);
+            env.panic_with_error(shared::Error::InvalidAmount);
+        }
+        if expiry_ledger <= env.ledger().sequence() {
+            env.panic_with_error(shared::Error::InvalidArgument);
+        }
+        if has_aid(&env, aid_id) {
+            env.panic_with_error(shared::Error::InvalidArgument);
         }
 
-        // Validate expiry is in the future
-        let current_time = env.ledger().timestamp();
-        if expiry <= current_time {
-            panic_with_error!(env, Error::InvalidArgument);
-        }
+        // Escrow funds from donor into contract.
+        token::Client::new(&env, &token).transfer(
+            &donor,
+            &env.current_contract_address(),
+            &amount,
+        );
 
-        // Get the token address
-        let token = env.storage()
-            .instance()
-            .get::<Symbol, Address>(&KEY_TOKEN)
-            .expect("token not initialized");
-
-        // Transfer the amount from donor to this contract (escrow)
-        let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&donor, &env.current_contract_address(), &amount);
-
-        // Get the current counter and increment it to generate unique aid_id
-        let mut current_counter = env.storage()
-            .instance()
-            .get::<Symbol, u64>(&KEY_AID_COUNTER)
-            .unwrap_or(0);
-        current_counter += 1;
-        let aid_id = current_counter;
-        env.storage().instance().set(&KEY_AID_COUNTER, &current_counter);
-
-        // Create and store the AidRecord
-        let aid_record = AidRecord {
+        let record = AidRecord {
             id: aid_id,
             donor: donor.clone(),
             recipient: recipient.clone(),
+            token: token.clone(),
             amount,
-            status: AidStatus::Created as u32,
-            timestamp: current_time,
-            expiry,
+            expiry_ledger,
+            status: AidStatus::Pending,
         };
+        set_aid(&env, aid_id, &record);
 
-        // Store the aid record in a persistent map of aid_id -> AidRecord
-        let mut aids: Map<u64, AidRecord> = env.storage()
-            .persistent()
-            .get(&KEY_AIDS)
-            .unwrap_or_else(|| Map::new(&env));
-        aids.insert(aid_id, aid_record);
-        env.storage().persistent().set(&KEY_AIDS, &aids);
+        // Track the highest used id so auto-increment helpers work.
+        let counter = get_aid_counter(&env);
+        if aid_id > counter {
+            set_aid_counter(&env, aid_id);
+        }
 
-        // Emit the AidCreated event
-        emit(&env, AID_CREATED, (aid_id, donor, recipient, amount, current_time, expiry));
-
+        emit(&env, AID_CREATED, (aid_id, donor, recipient, amount, expiry_ledger));
         aid_id
     }
 
-    /// Helper function to get an aid record by ID (useful for testing and other functions)
-    pub fn get_aid(env: Env, aid_id: u64) -> AidRecord {
-        let aids: Map<u64, AidRecord> = env.storage()
-            .persistent()
-            .get(&KEY_AIDS)
-            .expect("no aid records found");
-        aids.get(aid_id).expect("aid record not found")
+    // -----------------------------------------------------------------------
+    // Aid claiming
+    // -----------------------------------------------------------------------
+
+    /// Claim a pending aid disbursement and transfer funds to the recipient.
+    ///
+    /// # Errors (via `env.panic_with_error`)
+    /// - [`AidError::Paused`]         — contract is paused.
+    /// - [`AidError::NotFound`]       — `aid_id` does not exist.
+    /// - [`AidError::Expired`]        — `expiry_ledger` has passed.
+    /// - [`AidError::AlreadyClaimed`] — status is not `Pending`.
+    /// - [`AidError::Unauthorized`]   — `caller` is not the recipient.
+    pub fn claim_aid(env: Env, aid_id: u64, caller: Address) -> Result<(), AidError> {
+        if is_paused(&env) {
+            return Err(AidError::Paused);
+        }
+        caller.require_auth();
+
+        let mut record = get_aid(&env, aid_id).ok_or(AidError::NotFound)?;
+
+        if env.ledger().sequence() > record.expiry_ledger {
+            return Err(AidError::Expired);
+        }
+        if record.status != AidStatus::Pending {
+            return Err(AidError::AlreadyClaimed);
+        }
+        if caller != record.recipient {
+            return Err(AidError::Unauthorized);
+        }
+
+        // Checks-effects-interactions: write status first, then transfer.
+        record.status = AidStatus::Settled;
+        set_aid(&env, aid_id, &record);
+
+        token::Client::new(&env, &record.token).transfer(
+            &env.current_contract_address(),
+            &record.recipient,
+            &record.amount,
+        );
+
+        emit(&env, AID_CLAIMED, aid_id);
+        emit(&env, AID_SETTLED, aid_id);
+        Ok(())
     }
 
-    /// Get the token address used by the contract
-    pub fn get_token(env: Env) -> Address {
-        env.storage()
-            .instance()
-            .get::<Symbol, Address>(&KEY_TOKEN)
-            .expect("token not initialized")
+    // -----------------------------------------------------------------------
+    // Refunds
+    // -----------------------------------------------------------------------
+
+    /// Refund an expired, unclaimed aid disbursement to the original donor.
+    ///
+    /// Anyone may call this after expiry to trigger a refund; it is not
+    /// gated to the admin so expired funds cannot be held hostage.
+    ///
+    /// # Errors (via `env.panic_with_error`)
+    /// - [`AidError::NotFound`]       — `aid_id` does not exist.
+    /// - [`AidError::AlreadyClaimed`] — already settled or refunded.
+    /// - [`shared::Error::InvalidArgument`] — expiry has not yet passed.
+    pub fn refund_expired(env: Env, aid_id: u64) -> Result<(), AidError> {
+        let mut record = get_aid(&env, aid_id).ok_or(AidError::NotFound)?;
+
+        if record.status != AidStatus::Pending {
+            return Err(AidError::AlreadyClaimed);
+        }
+        if env.ledger().sequence() <= record.expiry_ledger {
+            env.panic_with_error(shared::Error::InvalidArgument);
+        }
+
+        // Checks-effects-interactions.
+        record.status = AidStatus::Refunded;
+        set_aid(&env, aid_id, &record);
+
+        token::Client::new(&env, &record.token).transfer(
+            &env.current_contract_address(),
+            &record.donor,
+            &record.amount,
+        );
+
+        emit(&env, AID_REFUNDED, aid_id);
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Queries
+    // -----------------------------------------------------------------------
+
+    /// Return the aid record for `aid_id`, or `None` if it does not exist.
+    pub fn get_aid(env: Env, aid_id: u64) -> Option<AidRecord> {
+        storage::get_aid(&env, aid_id)
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin controls
+    // -----------------------------------------------------------------------
+
+    /// Pause or resume the contract.  Admin only.
+    pub fn set_paused(env: Env, caller: Address, paused: bool) {
+        shared::auth::require_admin(&env, &caller).expect("unauthorized");
+        shared_set_paused(&env, paused);
     }
 }
+
+#[cfg(test)]
+mod tests;
