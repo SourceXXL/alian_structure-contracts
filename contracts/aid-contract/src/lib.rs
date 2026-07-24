@@ -110,9 +110,13 @@ impl AidContract {
             expiry,
         };
 
-        // Store the aid record using a unique key
-        let aid_key = Symbol::new_from_str(&format!("aid_{}", aid_id));
-        env.storage().persistent().set(&aid_key, &aid_record);
+        // Store the aid record in a persistent map of aid_id -> AidRecord
+        let mut aids: Map<u64, AidRecord> = env.storage()
+            .persistent()
+            .get(&KEY_AIDS)
+            .unwrap_or_else(|| Map::new(&env));
+        aids.insert(aid_id, aid_record);
+        env.storage().persistent().set(&KEY_AIDS, &aids);
 
         // Emit the AidCreated event
         emit(&env, AID_CREATED, (aid_id, donor, recipient, amount, current_time, expiry));
