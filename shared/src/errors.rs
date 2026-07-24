@@ -25,6 +25,9 @@ pub enum Error {
     /// Insufficient treasury balance.
     InsufficientBalance = 8,
     /// Requested withdrawal exceeds the configured per-transaction limit.
-    /// NEW: added for the treasury withdrawal feature.
     WithdrawalLimitExceeded = 9,
+    /// A supplied argument is structurally invalid (wrong range, zero amount, etc.).
+    InvalidArgument = 10,
+    /// The operation requires the contract to be paused but it is currently active.
+    NotPaused = 11,
 }

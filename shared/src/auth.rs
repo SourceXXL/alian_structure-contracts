@@ -1,22 +1,18 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 use crate::errors::Error;
+use crate::storage::{persistent_has, persistent_remove, persistent_set};
 
 pub const KEY_ADMIN: Symbol = symbol_short!("admin");
 
-/// Persistent-storage key type used to index per-address role assignments.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DataKey {
-    /// Presence of this key means `address` holds `role`.
-    Role(Address, Role),
-}
-
 // ---------------------------------------------------------------------------
-// Role enum
+// Role enum — single authoritative definition
 // ---------------------------------------------------------------------------
 
 /// Roles that can be granted to addresses in the system.
+///
+/// Every role is stored as a persistent `DataKey::Role(address, role)` entry.
+/// Roles are independent; holding one does not imply another.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Role {
@@ -28,6 +24,21 @@ pub enum Role {
     TreasuryManager,
     /// Authorised to pause / unpause the contract.
     Pauser,
+    /// Authorised to write referral configuration.
+    ReferralManager,
+    /// Authorised to post oracle signatures / verification proofs.
+    OracleSigner,
+}
+
+// ---------------------------------------------------------------------------
+// Storage key for role entries — stored in persistent storage
+// ---------------------------------------------------------------------------
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    /// Presence of this key means `address` holds `role`.
+    Role(Address, Role),
 }
 
 // ---------------------------------------------------------------------------
@@ -70,16 +81,19 @@ pub fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 /// Returns `true` when `user` holds `role`.
+///
+/// Uses [`persistent_get`] so the role entry's TTL is extended on every
+/// successful check, keeping frequently-queried roles alive.
 pub fn has_role(env: &Env, user: &Address, role: Role) -> bool {
-    env.storage()
-        .persistent()
-        .has::<DataKey>(&DataKey::Role(user.clone(), role))
+    persistent_has(env, &DataKey::Role(user.clone(), role))
 }
 
-/// Grants `role` to `user`.  Admin-gated — `admin_caller` must be the
+/// Grants `role` to `user`. Admin-gated — `admin_caller` must be the
 /// current admin with a valid signature.
 ///
 /// Returns `Err(Error::Unauthorized)` when the caller is not the admin.
+/// The role entry is written to persistent storage with an immediate TTL
+/// extension so it survives upcoming ledger closures.
 pub fn grant_role(
     env: &Env,
     admin_caller: &Address,
@@ -87,21 +101,18 @@ pub fn grant_role(
     role: Role,
 ) -> Result<(), Error> {
     require_admin(env, admin_caller)?;
-    env.storage()
-        .persistent()
-        .set::<DataKey, bool>(&DataKey::Role(user.clone(), role), &true);
+    persistent_set(env, &DataKey::Role(user.clone(), role), &true);
     Ok(())
 }
 
-/// Revokes `role` from `user`.  Admin-gated — `admin_caller` must be the
+/// Revokes `role` from `user`. Admin-gated — `admin_caller` must be the
 /// current admin with a valid signature.
 ///
 /// Returns `Err(Error::Unauthorized)` when the caller is not the admin.
 ///
 /// # Idempotency
 /// If `user` does not currently hold `role` this is a no-op and returns
-/// `Ok(())`.  Callers should not rely on this function to detect whether
-/// the role was actually present; use [`has_role`] for that.
+/// `Ok(())`.
 pub fn revoke_role(
     env: &Env,
     admin_caller: &Address,
@@ -109,9 +120,7 @@ pub fn revoke_role(
     role: Role,
 ) -> Result<(), Error> {
     require_admin(env, admin_caller)?;
-    env.storage()
-        .persistent()
-        .remove::<DataKey>(&DataKey::Role(user.clone(), role));
+    persistent_remove(env, &DataKey::Role(user.clone(), role));
     Ok(())
 }
 
@@ -142,61 +151,6 @@ pub fn require_role(env: &Env, caller: &Address, role: Role) -> Result<(), Error
 pub fn require_not_paused(env: &Env) -> Result<(), Error> {
     if crate::storage::is_paused(env) {
         return Err(Error::ContractPaused);
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// NEW: lightweight, contract-scoped roles (additive — does not touch the
-// single-admin functions above). Introduced for the treasury withdrawal
-// feature so contracts can gate specific entry points to a role narrower
-// than "the admin", e.g. TreasuryManager, without a full governance/RBAC
-// module. Uses `Error::Unauthorized` to stay consistent with the existing
-// error convention in this crate.
-// ---------------------------------------------------------------------------
-
-#[contracttype]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Role {
-    TreasuryManager,
-    ReferralManager,
-    OracleSigner,
-}
-
-#[contracttype]
-pub enum RoleKey {
-    Role(Address, Role),
-}
-
-/// Grants `role` to `who`. Callers are expected to gate access to this
-/// (e.g. via `require_admin`) themselves before calling it.
-pub fn grant_role(env: &Env, who: &Address, role: Role) {
-    env.storage()
-        .persistent()
-        .set(&RoleKey::Role(who.clone(), role), &true);
-}
-
-/// Revokes `role` from `who`.
-pub fn revoke_role(env: &Env, who: &Address, role: Role) {
-    env.storage()
-        .persistent()
-        .remove(&RoleKey::Role(who.clone(), role));
-}
-
-/// Returns whether `who` currently holds `role`.
-pub fn has_role(env: &Env, who: &Address, role: Role) -> bool {
-    env.storage()
-        .persistent()
-        .get::<RoleKey, bool>(&RoleKey::Role(who.clone(), role))
-        .unwrap_or(false)
-}
-
-/// Requires that `who` has authorized the current invocation AND holds
-/// `role`. Returns `Error::Unauthorized` otherwise.
-pub fn require_role(env: &Env, who: &Address, role: Role) -> Result<(), Error> {
-    who.require_auth();
-    if !has_role(env, who, role) {
-        return Err(Error::Unauthorized);
     }
     Ok(())
 }
