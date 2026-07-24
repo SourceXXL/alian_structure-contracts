@@ -1,13 +1,14 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, panic_with_error, token, Address, Env, Symbol,
+    contract, contractimpl, panic_with_error, token, Address, Env, Symbol, Map,
 };
 use shared::{emit, AID_CREATED, Error};
 
 /// Storage keys
 const KEY_TOKEN: Symbol = Symbol::new("token");
 const KEY_AID_COUNTER: Symbol = Symbol::new("aid_cnt");
+const KEY_AIDS: Symbol = Symbol::new("aids");
 
 /// Aid status enum
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
