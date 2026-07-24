@@ -126,11 +126,11 @@ impl AidContract {
 
     /// Helper function to get an aid record by ID (useful for testing and other functions)
     pub fn get_aid(env: Env, aid_id: u64) -> AidRecord {
-        let aid_key = Symbol::new_from_str(&format!("aid_{}", aid_id));
-        env.storage()
+        let aids: Map<u64, AidRecord> = env.storage()
             .persistent()
-            .get(&aid_key)
-            .expect("aid record not found")
+            .get(&KEY_AIDS)
+            .expect("no aid records found");
+        aids.get(aid_id).expect("aid record not found")
     }
 
     /// Get the token address used by the contract
