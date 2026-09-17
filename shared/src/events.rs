@@ -295,6 +295,92 @@ pub fn emit<T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, topic: Sy
 }
 
 // ---------------------------------------------------------------------------
+// Oracle verification event helpers
+// ---------------------------------------------------------------------------
+
+/// Emits `OracleSubmitted`.
+///
+/// Topics: `("oracle", "submitted")`
+///
+/// Data: `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, u64 submitted_at)`
+pub fn emit_oracle_submitted(
+    env: &Env,
+    id: u32,
+    subject: &Address,
+    kind: &Symbol,
+    evidence_hash: &BytesN<32>,
+    submitted_at: u64,
+) {
+    env.events().publish(
+        (symbol_short!("oracle"), symbol_short!("submitted")),
+        (
+            id,
+            subject.clone(),
+            kind.clone(),
+            evidence_hash.clone(),
+            submitted_at,
+        ),
+    );
+}
+
+/// Emits `OracleVerified`.
+///
+/// Topics: `("oracle", "verified")`
+///
+/// Data: `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, Address verifier, u64 decided_at, Option<u64> expires_at)`
+#[allow(clippy::too_many_arguments)]
+pub fn emit_oracle_verified(
+    env: &Env,
+    id: u32,
+    subject: &Address,
+    kind: &Symbol,
+    evidence_hash: &BytesN<32>,
+    verifier: &Address,
+    decided_at: u64,
+    expires_at: Option<u64>,
+) {
+    env.events().publish(
+        (symbol_short!("oracle"), symbol_short!("verified")),
+        (
+            id,
+            subject.clone(),
+            kind.clone(),
+            evidence_hash.clone(),
+            verifier.clone(),
+            decided_at,
+            expires_at,
+        ),
+    );
+}
+
+/// Emits `OracleRejected`.
+///
+/// Topics: `("oracle", "rejected")`
+///
+/// Data: `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, Address verifier, u64 decided_at)`
+pub fn emit_oracle_rejected(
+    env: &Env,
+    id: u32,
+    subject: &Address,
+    kind: &Symbol,
+    evidence_hash: &BytesN<32>,
+    verifier: &Address,
+    decided_at: u64,
+) {
+    env.events().publish(
+        (symbol_short!("oracle"), symbol_short!("rejected")),
+        (
+            id,
+            subject.clone(),
+            kind.clone(),
+            evidence_hash.clone(),
+            verifier.clone(),
+            decided_at,
+        ),
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Upgradeability event helpers
 // ---------------------------------------------------------------------------
 
