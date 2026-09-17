@@ -3,6 +3,9 @@
 pub mod storage;
 pub mod types;
 
+#[cfg(test)]
+mod tests;
+
 use shared::events::{
     emit_module_initialized, emit_oracle_rejected, emit_oracle_submitted, emit_oracle_verified,
 };
