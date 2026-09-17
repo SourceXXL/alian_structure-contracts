@@ -63,6 +63,27 @@ The Aid contract initialization function provides the first workspace example.
 It returns `Error::AlreadyInitialized` when initialization is attempted more
 than once.
 
+## Module error codes
+
+Each module defines its own `contracterror` enum inside its reserved range.
+Modules must document their codes here when introduced.
+
+### Oracle contract (`OracleError`, 500-599)
+
+| Code | Variant | Meaning |
+|---:|---|---|
+| `500` | `VerificationNotFound` | The requested verification record does not exist |
+| `501` | `AlreadyDecided` | A decision has already been recorded for this verification |
+| `502` | `NotVerifier` | The caller is not authorised to decide verifications |
+| `503` | `InvalidEvidence` | The evidence is invalid (empty/oversized metadata URI) or a query cursor is out of range |
+| `504` | `Expired` | The attestation has expired and must be re-verified |
+| `505` | `Revoked` | The attestation was verified and later revoked |
+| `506` | `AlreadyInitialized` | The contract has already been initialized |
+| `507` | `Paused` | The operation is not permitted while the contract is paused |
+
+The oracle contract never stores personal data. Verification records carry
+only an evidence hash and a metadata URI; off-chain systems resolve the URI.
+
 ## Maintenance rules
 
 1. Never change the numeric value of a published error variant.
@@ -97,6 +118,9 @@ for backward compatibility. New protocol code should use the typed helpers in
 | `ModuleInitialized` | `emit_module_initialized` | `("logging", "initialized")` | `(Symbol module, u32 version, Address caller, u64 initialized_at)` |
 | `ActionExecuted` | `emit_action_executed` | `("logging", "action")` | `(Symbol module, Symbol action, Address caller, bool success, u64 executed_at)` |
 | `PermissionChanged` | `emit_permission_changed` | `("logging", "permission")` | `(Symbol module, Symbol role, Address subject, bool granted, u64 changed_at)` |
+| `OracleSubmitted` | `emit_oracle_submitted` | `("oracle", "submitted")` | `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, u64 submitted_at)` |
+| `OracleVerified` | `emit_oracle_verified` | `("oracle", "verified")` | `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, Address verifier, u64 decided_at, Option<u64> expires_at)` |
+| `OracleRejected` | `emit_oracle_rejected` | `("oracle", "rejected")` | `(u32 id, Address subject, Symbol kind, BytesN<32> evidence_hash, Address verifier, u64 decided_at)` |
 
 ### Event stability rules
 
