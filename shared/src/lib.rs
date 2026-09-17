@@ -20,12 +20,12 @@ pub use batch::{
 pub use errors::Error;
 pub use events::{
     emit, emit_collection_registered, emit_nft_auction, emit_nft_bid, emit_nft_listed,
-    emit_nft_offer, emit_nft_settle, emit_nft_sold, emit_royalty_paid, AID_CLAIMED, AID_CREATED,
-    AID_REFUNDED, AID_SETTLED, COMMISSION_PAID, CONTRACT_PAUSED, CONTRACT_RESUMED,
-    CONTRACT_UPGRADED, PARAMETER_CHANGED, PAYMENT_ESCROW_CREATED, PAYMENT_ESCROW_REFUNDED,
-    PAYMENT_ESCROW_RELEASED, PAYMENT_FEE, PAYMENT_TRANSFER, REFERRAL_ACCRUED, REFERRAL_REGISTERED,
-    REFERRER_SET, TIER_CONFIG_SET, TREASURY_DEPOSIT, TREASURY_EMERGENCY_WITHDRAW, TREASURY_SET,
-    TREASURY_WITHDRAW,
+    emit_nft_offer, emit_nft_settle, emit_nft_sold, emit_oracle_rejected, emit_oracle_submitted,
+    emit_oracle_verified, emit_royalty_paid, AID_CLAIMED, AID_CREATED, AID_REFUNDED, AID_SETTLED,
+    COMMISSION_PAID, CONTRACT_PAUSED, CONTRACT_RESUMED, CONTRACT_UPGRADED, PARAMETER_CHANGED,
+    PAYMENT_ESCROW_CREATED, PAYMENT_ESCROW_REFUNDED, PAYMENT_ESCROW_RELEASED, PAYMENT_FEE,
+    PAYMENT_TRANSFER, REFERRAL_ACCRUED, REFERRAL_REGISTERED, REFERRER_SET, TIER_CONFIG_SET,
+    TREASURY_DEPOSIT, TREASURY_EMERGENCY_WITHDRAW, TREASURY_SET, TREASURY_WITHDRAW,
 };
 pub use payments::{
     calculate_fee, calculate_fee_split, create_escrow, deduct_fee, get_escrow, refund_escrow,
