@@ -34,6 +34,10 @@ const MIN_REFERRAL_REWARD_CAP: i128 = 0;
 const MAX_REFERRAL_REWARD_CAP: i128 = 1_000_000_000_000_000_000;
 const DEFAULT_REFERRAL_REWARD_CAP: i128 = 10_000_000_000;
 
+const MIN_QUORUM_PERCENTAGE_BPS: i128 = 1;
+const MAX_QUORUM_PERCENTAGE_BPS: i128 = 10_000;
+const DEFAULT_QUORUM_PERCENTAGE_BPS: i128 = 5_000;
+
 type ContractResult<T> = core::result::Result<T, Error>;
 
 // ---------------------------------------------------------------------------
@@ -58,6 +62,7 @@ pub enum ParameterKey {
     ReferralTierBps(u32),
     ReferralMaxTiers,
     ReferralRewardCap,
+    QuorumPercentageBps,
 }
 
 #[contracttype]
@@ -439,6 +444,10 @@ impl GovernanceContract {
     pub fn referral_reward_cap(env: Env) -> Result<i128, Error> {
         read_param(&env, &ParameterKey::ReferralRewardCap)
     }
+
+    pub fn quorum_percentage_bps(env: Env) -> Result<i128, Error> {
+        read_param(&env, &ParameterKey::QuorumPercentageBps)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +505,11 @@ fn seed_defaults(env: &Env) {
         &ParameterKey::ReferralRewardCap,
         DEFAULT_REFERRAL_REWARD_CAP,
     );
+    write_param(
+        env,
+        &ParameterKey::QuorumPercentageBps,
+        DEFAULT_QUORUM_PERCENTAGE_BPS,
+    );
 }
 
 fn validate_param(key: &ParameterKey, value: i128) -> ContractResult<()> {
@@ -533,6 +547,10 @@ fn bounds_for(key: &ParameterKey) -> Option<ParameterBounds> {
         ParameterKey::ReferralRewardCap => Some(ParameterBounds {
             min: MIN_REFERRAL_REWARD_CAP,
             max: MAX_REFERRAL_REWARD_CAP,
+        }),
+        ParameterKey::QuorumPercentageBps => Some(ParameterBounds {
+            min: MIN_QUORUM_PERCENTAGE_BPS,
+            max: MAX_QUORUM_PERCENTAGE_BPS,
         }),
     }
 }
@@ -1194,6 +1212,29 @@ mod tests {
         );
         assert!(matches!(
             client.try_get_bounds(&ParameterKey::ReferralTierBps(11)),
+            Err(Ok(Error::InvalidArgument))
+        ));
+    }
+
+    #[test]
+    fn test_quorum_percentage_bps_default_and_update() {
+        let (env, client, admin) = setup();
+
+        assert_eq!(
+            client.quorum_percentage_bps(),
+            DEFAULT_QUORUM_PERCENTAGE_BPS
+        );
+
+        client.set_param(&admin, &ParameterKey::QuorumPercentageBps, &7_500);
+        assert_eq!(client.quorum_percentage_bps(), 7_500);
+
+        // Rejects out of range (bounds: 1..=10_000)
+        assert!(matches!(
+            client.try_set_param(&admin, &ParameterKey::QuorumPercentageBps, &0),
+            Err(Ok(Error::InvalidArgument))
+        ));
+        assert!(matches!(
+            client.try_set_param(&admin, &ParameterKey::QuorumPercentageBps, &10_001),
             Err(Ok(Error::InvalidArgument))
         ));
     }
